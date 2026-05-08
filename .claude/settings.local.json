@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/paul/repos/aurora_III_HA remote -v)",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('/Users/paul/repos/aurora_III_HA/tools/dump_registers.py'\\).read\\(\\)\\); print\\('OK'\\)\")"
+    ]
+  }
+}

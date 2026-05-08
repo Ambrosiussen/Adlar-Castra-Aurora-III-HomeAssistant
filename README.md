@@ -41,6 +41,34 @@ Complete Home Assistant integration for the **Adlar Castra Aurora III Pro** heat
 
 The Waveshare unit is connected in **parallel** to the existing Jan-module on the heat pump's internal RS485 communication bus. RS485 is a multi-drop bus, so adding another listener/master is electrically supported.
 
+## Wiring
+
+The Waveshare connects to the **MODBUS A / B / GND** screw terminals on the Jan-module. These are the same RS485 pair the Jan itself uses to talk to the heat pump's main board, so you are simply tapping in as an additional node on the bus.
+
+| Waveshare terminal | Jan-module terminal | Notes |
+|---|---|---|
+| `A` | `MODBUS A` | RS485 differential A |
+| `B` | `MODBUS B` | RS485 differential B |
+| `GND` | `MODBUS GND` | Optional but strongly recommended for noise immunity |
+| `6-36V` + `GND` | — | Power input (use a 12V DC supply, or PoE if you have the PoE variant) |
+| `PE` | — | Protective earth, leave disconnected unless your installation calls for it |
+
+Use a single shielded twisted pair for A/B (don't split A and B across different pairs — it will pick up noise and you'll see frame decode errors). Add a third conductor for GND if you have one.
+
+### Jan-module — terminal layout
+
+The lower terminal block on the Jan-module exposes the MODBUS bus. Wire into the three terminals labelled `A`, `B`, `GND` under "MODBUS":
+
+![Jan-module showing the MODBUS A/B/GND screw terminals on the lower terminal block](images/jan_module.jpg)
+
+### Waveshare RS232/485 to WiFi/ETH (B) — terminal layout
+
+The green plug on the right side carries (top to bottom) `PE`, `B`, `A`, `6-36V` (power +), `GND`. Power can also be supplied via the DC barrel jack:
+
+![Waveshare RS232/485 to WiFi/ETH (B) gateway showing the PE/B/A/6-36V/GND terminal block](images/waveshare_module.jpeg)
+
+> ⚠️ Always make wiring changes with the heat pump and Waveshare powered off. Double-check A/B polarity before powering back on — swapping A and B is the most common cause of "no response" or frame decode errors.
+
 ## Waveshare Gateway Configuration
 
 Connect to the Waveshare's web interface (default `http://10.10.100.254` in AP mode, `admin`/`admin`) and configure:
@@ -224,76 +252,14 @@ This is the "two captains" issue described above. The Jan-module overwrites your
 
 ### Diagnostic script: dump all registers
 
-To check which registers are populated on your unit (useful for verifying the AC voltage/current issue, or finding firmware differences), run this Python script. It reads the documented registers directly and prints them in a table you can compare against the Adlar documentation.
-
-Requirements: Python 3 and `pymodbus`:
+To check which registers are populated on your unit (useful for verifying the AC voltage/current issue, or finding firmware differences), use [tools/dump_registers.py](tools/dump_registers.py). It reads the documented registers directly and prints them in a table you can compare against the Adlar documentation.
 
 ```bash
 pip3 install pymodbus
+python3 tools/dump_registers.py <WAVESHARE_IP> 8899 1
 ```
 
-Then run (replace the IP with your Waveshare's address):
-
-```python
-from pymodbus.client import ModbusTcpClient
-
-REGISTERS = [
-    # (address, type, name from Adlar documentation)
-    (38,   '3X', 'System status bits'),
-    (40,   '3X', 'Room temp Tidr'),
-    (42,   '3X', 'Inlet water TA'),
-    (43,   '3X', 'Outlet water TB'),
-    (46,   '3X', 'DHW tank TW'),
-    (49,   '3X', 'Outdoor coil T3'),
-    (50,   '3X', 'Ambient T4'),
-    (52,   '3X', 'Discharge TP'),
-    (53,   '3X', 'Suction TH'),
-    (61,   '3X', 'Outlet water pressure'),
-    (64,   '3X', 'Water flow'),
-    (70,   '3X', 'EEV main opening'),
-    (72,   '3X', 'No.1 DC fan speed'),
-    (74,   '3X', 'AC input voltage'),       # <-- check this
-    (75,   '3X', 'AC input current'),       # <-- and this
-    (76,   '3X', 'DC bus voltage'),
-    (77,   '3X', 'Compressor current'),
-    (79,   '3X', 'Compressor actual freq'),
-    (86,   '3X', 'High pressure'),
-    (87,   '3X', 'Low pressure'),
-    (2100, '4X', 'HVAC mode'),
-    (2103, '4X', 'Function A bits'),
-    (2107, '4X', 'Z1 heating setpoint'),
-    (2114, '4X', 'Room temp setpoint'),
-]
-
-c = ModbusTcpClient('10.57.16.59', port=8899, timeout=5)
-c.connect()
-
-print(f"{'Addr':>6} {'Type':<4} {'Name':<30} {'Raw':>8} {'÷10':>8}")
-print("-" * 65)
-
-for addr, reg_type, name in REGISTERS:
-    try:
-        if reg_type == '3X':
-            try:
-                r = c.read_input_registers(address=addr, count=1, device_id=1)
-            except TypeError:
-                r = c.read_input_registers(address=addr, count=1, slave=1)
-        else:
-            try:
-                r = c.read_holding_registers(address=addr, count=1, device_id=1)
-            except TypeError:
-                r = c.read_holding_registers(address=addr, count=1, slave=1)
-
-        if r.isError():
-            print(f"{addr:>6} {reg_type:<4} {name:<30} {'ERROR':>8}")
-        else:
-            val = r.registers[0]
-            print(f"{addr:>6} {reg_type:<4} {name:<30} {val:>8} {val/10:>8.1f}")
-    except Exception as e:
-        print(f"{addr:>6} {reg_type:<4} {name:<30} EXC: {e}")
-
-c.close()
-```
+Arguments are optional and default to `10.57.16.59`, port `8899`, slave `1`. If you get no response, try slave `251`.
 
 Run this while the compressor is actively running. If registers 74 and 75 return 0 while 76 and 77 return real values (e.g. 544 and 67), your unit is affected by the firmware issue described in the caveats.
 
