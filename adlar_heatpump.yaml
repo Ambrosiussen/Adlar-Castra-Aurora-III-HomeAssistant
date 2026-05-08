@@ -1,0 +1,1133 @@
+# =============================================================================
+# Adlar Aurora III Pro - Home Assistant Modbus Package
+# =============================================================================
+# Complete Home Assistant integration for the Adlar Castra Aurora III Pro
+# heat pump (R290 series) via Modbus TCP-to-RTU gateway.
+#
+# Hardware setup:
+#   - Adlar Castra Aurora III Pro (7 kW, 9 kW, or 12 kW, R290 refrigerant)
+#   - Waveshare RS232/485 to WiFi/ETH (B) gateway, configured as
+#     Modbus TCP <=> Modbus RTU bridge
+#   - RS485 connected in parallel to the existing Jan-module on the
+#     internal communication bus
+#
+# Waveshare configuration:
+#   - Mode: Modbus TCP <=> Modbus RTU
+#   - Baud rate: 9600
+#   - Data bits: 8
+#   - Parity: None
+#   - Stop bits: 2
+#   - Network mode: TCP Server, port 8899
+#   - Multi-host mode recommended to prevent bus conflicts with the Jan-module
+#
+# Modbus protocol (from official Adlar documentation):
+#   - Slave ID: 251 (officially), but slave 1 also works empirically
+#   - 9600 baud, 8N2, CRC-16
+#   - Function codes: 0x03 (read holding), 0x04 (read input),
+#                     0x06 (write single), 0x10 (write multiple)
+#   - 3X registers: read-only (input registers)
+#   - 4X registers: read/write (holding registers)
+#
+# Configuration steps:
+#   1. Replace the host IP (10.57.16.59) with your Waveshare's IP
+#   2. Set a DHCP reservation for the Waveshare in your router
+#   3. Place this file in /config/packages/adlar_heatpump.yaml
+#   4. Add to configuration.yaml if not already done:
+#        homeassistant:
+#          packages: !include_dir_named packages
+#   5. Restart Home Assistant
+#
+# Important notes:
+#   - The Jan-module is the master that controls register 2107 based on
+#     weather-compensation curves. Without disabling that, your writes to
+#     2107 will be overruled. Contact Adlar support to disable the Jan's
+#     weather control if you want full HA control.
+#   - Register 2114 (room temperature setpoint) may not work if your unit
+#     is configured "with thermostat" mode — test carefully before relying.
+#   - Power calculation (V × A) is apparent power, not true power. Useful
+#     as estimation but install a proper kWh meter for accurate COP.
+#
+# Credits:
+#   - Original Modbus mapping work: Onno Timmermans
+#     https://github.com/OnnoTimmermans/HA-modbus-Adlar-aurora-Pro-III
+#   - Extended with full register set from official Adlar documentation
+#
+# License: MIT
+# =============================================================================
+
+modbus:
+  - name: adlar_hp
+    type: tcp
+    host: 10.57.16.59  # Replace with your Waveshare's IP
+    port: 8899
+    timeout: 5
+    delay: 2
+
+    sensors:
+
+      # =====================================================================
+      # CONFIGURATION & SYSTEM INFO (static, slow polling)
+      # =====================================================================
+      - name: "HP Thermostat type"
+        address: 1
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scan_interval: 600
+        # 0=none, 1=single zone on/off+mode, 2=single zone on/off,
+        # 3=two zone on/off
+
+      - name: "HP Zone config"
+        address: 2
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scan_interval: 600
+        # 0=single zone, 1=two zones
+
+      - name: "HP Refrigerant type"
+        address: 7
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scan_interval: 3600
+        # 0=R32, 1=R290
+
+      - name: "HP Effective mode raw"
+        address: 9
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scan_interval: 60
+        # bit0=cooling, bit1=heating, bit2=DHW
+
+      # =====================================================================
+      # ZONE TEMPERATURE LIMITS (static)
+      # =====================================================================
+      - name: "HP Zone1 heating max"
+        address: 12
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 600
+
+      - name: "HP Zone1 heating min"
+        address: 13
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 600
+
+      - name: "HP Zone1 DHW max"
+        address: 14
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 600
+
+      - name: "HP Zone1 DHW min"
+        address: 15
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 600
+
+      - name: "HP Room temp max"
+        address: 30
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 600
+
+      - name: "HP Room temp min"
+        address: 31
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 600
+
+      # =====================================================================
+      # EMITTER TYPE
+      # =====================================================================
+      - name: "HP Zone1 terminal heating"
+        address: 35
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scan_interval: 600
+        # 0=FCU, 1=Radiator, 2=Floor heating
+
+      # =====================================================================
+      # STATUS BITS (operational, fast polling)
+      # =====================================================================
+      - name: "HP System status bits"
+        address: 38
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scan_interval: 30
+
+      - name: "HP External heat request raw"
+        address: 39
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scan_interval: 30
+        # bit0=anti-freeze ext, bit1=defrost ext
+
+      # =====================================================================
+      # TEMPERATURES - WATER & ROOM
+      # =====================================================================
+      - name: "HP Room temperature (Tidr)"
+        address: 40
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 30
+
+      - name: "HP Total leaving water (after aux boiler) TC"
+        address: 41
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 30
+
+      - name: "HP Inlet water temperature TA"
+        address: 42
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 30
+
+      - name: "HP Outlet water temperature TB"
+        address: 43
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 30
+
+      - name: "HP Buffer tank upper TE1"
+        address: 44
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 60
+
+      - name: "HP Buffer tank lower TE2"
+        address: 45
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 60
+
+      - name: "HP DHW tank temperature TW"
+        address: 46
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 60
+
+      - name: "HP Zone2 mixing station TZ2"
+        address: 47
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 60
+
+      - name: "HP Solar water heating Tso"
+        address: 48
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 60
+
+      # =====================================================================
+      # TEMPERATURES - REFRIGERANT CIRCUIT
+      # =====================================================================
+      - name: "HP Outdoor unit coil T3"
+        address: 49
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 30
+
+      - name: "HP Ambient temperature T4"
+        address: 50
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 30
+
+      - name: "HP EXV outlet T5"
+        address: 51
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 30
+
+      - name: "HP Discharge temperature TP"
+        address: 52
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 30
+
+      - name: "HP Suction temperature TH"
+        address: 53
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 30
+
+      - name: "HP Target outlet TOut"
+        address: 56
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 30
+
+      # =====================================================================
+      # HYDRAULICS
+      # =====================================================================
+      - name: "HP Inlet water pressure"
+        address: 60
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "bar"
+        scan_interval: 60
+
+      - name: "HP Outlet water pressure"
+        address: 61
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "bar"
+        scan_interval: 30
+
+      - name: "HP Pump PWM output"
+        address: 62
+        input_type: input
+        slave: 1
+        data_type: uint16
+        unit_of_measurement: "%"
+        scan_interval: 30
+
+      - name: "HP Pump PWM feedback"
+        address: 63
+        input_type: input
+        slave: 1
+        data_type: uint16
+        unit_of_measurement: "%"
+        scan_interval: 30
+
+      - name: "HP Water flow"
+        address: 64
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "m³/h"
+        scan_interval: 30
+
+      # =====================================================================
+      # CLIMATE CURVE (what the Jan-module / internal curve calculates)
+      # =====================================================================
+      - name: "HP Zone1 climate curve heating set"
+        address: 67
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 60
+
+      - name: "HP Zone1 climate curve cooling set"
+        address: 66
+        input_type: input
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 60
+
+      # =====================================================================
+      # COMPONENTS: EEV, FAN, COMPRESSOR
+      # =====================================================================
+      - name: "HP EEV opening"
+        address: 70
+        input_type: input
+        slave: 1
+        data_type: uint16
+        unit_of_measurement: "steps"
+        scan_interval: 30
+
+      - name: "HP Fan speed"
+        address: 72
+        input_type: input
+        slave: 1
+        data_type: uint16
+        unit_of_measurement: "RPM"
+        scan_interval: 30
+
+      - name: "HP Compressor target frequency"
+        address: 78
+        input_type: input
+        slave: 1
+        data_type: uint16
+        unit_of_measurement: "Hz"
+        scan_interval: 30
+
+      - name: "HP Compressor actual frequency"
+        address: 79
+        input_type: input
+        slave: 1
+        data_type: uint16
+        unit_of_measurement: "Hz"
+        scan_interval: 30
+
+      - name: "HP Compressor current"
+        address: 77
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "A"
+        scan_interval: 30
+
+      # =====================================================================
+      # ELECTRICAL (for COP calculation!)
+      # =====================================================================
+      - name: "HP AC voltage"
+        address: 74
+        input_type: input
+        slave: 1
+        data_type: uint16
+        unit_of_measurement: "V"
+        scan_interval: 30
+
+      - name: "HP AC current"
+        address: 75
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "A"
+        scan_interval: 30
+
+      - name: "HP DC bus voltage"
+        address: 76
+        input_type: input
+        slave: 1
+        data_type: uint16
+        unit_of_measurement: "V"
+        scan_interval: 60
+
+      # =====================================================================
+      # VALVE STATUS
+      # =====================================================================
+      - name: "HP Main water pump status"
+        address: 80
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scan_interval: 30
+        # 0=off, 1=on
+
+      - name: "HP Four-way valve status"
+        address: 81
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scan_interval: 30
+        # 0=off (heating), 1=on (cooling/defrost)
+
+      # =====================================================================
+      # SYSTEM PRESSURES
+      # =====================================================================
+      - name: "HP High pressure"
+        address: 86
+        input_type: input
+        slave: 1
+        data_type: uint16
+        unit_of_measurement: "kPa"
+        scan_interval: 30
+
+      - name: "HP Low pressure"
+        address: 87
+        input_type: input
+        slave: 1
+        data_type: uint16
+        unit_of_measurement: "kPa"
+        scan_interval: 30
+
+      # =====================================================================
+      # ERROR CODES (raw bitfields)
+      # =====================================================================
+      - name: "HP Error E01-E16"
+        address: 90
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scan_interval: 60
+
+      - name: "HP Error E17-E32"
+        address: 91
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scan_interval: 60
+
+      - name: "HP Error P01-P16"
+        address: 96
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scan_interval: 60
+
+      - name: "HP Error P17-P32"
+        address: 97
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scan_interval: 60
+
+      # =====================================================================
+      # OPERATION MODES
+      # =====================================================================
+      - name: "HP Target operation mode raw"
+        address: 101
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scan_interval: 30
+
+      - name: "HP Actual operation mode raw"
+        address: 103
+        input_type: input
+        slave: 1
+        data_type: uint16
+        scan_interval: 30
+
+      # =====================================================================
+      # WRITABLE REGISTERS (4X) - read here for monitoring
+      # =====================================================================
+      - name: "HP HVAC mode current"
+        address: 2100
+        input_type: holding
+        slave: 1
+        data_type: uint16
+        scan_interval: 30
+        # 1=Cooling, 2=Heating, 4=Auto
+
+      - name: "HP Zone control current"
+        address: 2101
+        input_type: holding
+        slave: 1
+        data_type: uint16
+        scan_interval: 30
+        # 0=All off, 1=Z1 on/Z2 off, 2=Z1 off/Z2 on, 3=All on
+
+      - name: "HP DHW mode current"
+        address: 2102
+        input_type: holding
+        slave: 1
+        data_type: uint16
+        scan_interval: 30
+        # 0=DHW off, 1=DHW on
+
+      - name: "HP Function A raw"
+        address: 2103
+        input_type: holding
+        slave: 1
+        data_type: uint16
+        scan_interval: 30
+        # bit3=elec heater, bit4-5=silent mode, bit6=disinfection
+
+      - name: "HP DHW setpoint current"
+        address: 2105
+        input_type: holding
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 30
+
+      - name: "HP Zone1 heating setpoint current"
+        address: 2107
+        input_type: holding
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 30
+
+      - name: "HP Room temperature setpoint current"
+        address: 2114
+        input_type: holding
+        slave: 1
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        unit_of_measurement: "°C"
+        scan_interval: 30
+
+    # =========================================================================
+    # CLIMATE entity
+    # =========================================================================
+    climates:
+      - name: "Heat pump"
+        slave: 1
+        address: 43
+        input_type: input
+        data_type: int16
+        scale: 0.1
+        precision: 1
+        temperature_unit: C
+        target_temp_register: 2107
+        target_temp_write_registers: true
+        min_temp: 18
+        max_temp: 50
+        temp_step: 1
+        hvac_mode_register:
+          address: 2100
+          write_registers: true
+          values:
+            state_heat: 2
+            state_auto: 4
+            state_cool: 1
+
+# =============================================================================
+# TEMPLATE ENTITIES
+# =============================================================================
+template:
+  - binary_sensor:
+      # ---------- Status bits from register 38 ----------
+      - name: "HP Oil return active"
+        state: >
+          {{ bitwise_and(states('sensor.hp_system_status_bits')|int(0), 1) > 0 }}
+
+      - name: "HP Defrost active"
+        state: >
+          {{ bitwise_and(states('sensor.hp_system_status_bits')|int(0), 2) > 0 }}
+
+      - name: "HP Anti-freezing active"
+        state: >
+          {{ bitwise_and(states('sensor.hp_system_status_bits')|int(0), 4) > 0 }}
+
+      - name: "HP Disinfection active"
+        state: >
+          {{ bitwise_and(states('sensor.hp_system_status_bits')|int(0), 16) > 0 }}
+
+      - name: "HP Ambient temp too low (compressor blocked)"
+        state: >
+          {{ bitwise_and(states('sensor.hp_system_status_bits')|int(0), 2048) > 0 }}
+
+      - name: "HP Compressor running"
+        state: >
+          {{ states('sensor.hp_compressor_actual_frequency')|float(0) > 0 }}
+
+      # ---------- Effective mode bits from register 9 ----------
+      - name: "HP Cooling mode effective"
+        state: >
+          {{ bitwise_and(states('sensor.hp_effective_mode_raw')|int(0), 1) > 0 }}
+
+      - name: "HP Heating mode effective"
+        state: >
+          {{ bitwise_and(states('sensor.hp_effective_mode_raw')|int(0), 2) > 0 }}
+
+      - name: "HP DHW mode effective"
+        state: >
+          {{ bitwise_and(states('sensor.hp_effective_mode_raw')|int(0), 4) > 0 }}
+
+      # ---------- Function A bits from register 2103 ----------
+      - name: "HP Forced electrical heater"
+        state: >
+          {{ bitwise_and(states('sensor.hp_function_a_raw')|int(0), 8) > 0 }}
+
+      - name: "HP Disinfection mode enabled"
+        state: >
+          {{ bitwise_and(states('sensor.hp_function_a_raw')|int(0), 64) > 0 }}
+
+      # ---------- Valve states ----------
+      - name: "HP Main water pump on"
+        state: "{{ states('sensor.hp_main_water_pump_status')|int(0) == 1 }}"
+
+      - name: "HP Cooling cycle (4-way valve)"
+        state: "{{ states('sensor.hp_four_way_valve_status')|int(0) == 1 }}"
+
+      # ---------- Error indicators ----------
+      - name: "HP E-error active"
+        state: >
+          {{ states('sensor.hp_error_e01_e16')|int(0) > 0 or
+             states('sensor.hp_error_e17_e32')|int(0) > 0 }}
+
+      - name: "HP P-error active"
+        state: >
+          {{ states('sensor.hp_error_p01_p16')|int(0) > 0 or
+             states('sensor.hp_error_p17_p32')|int(0) > 0 }}
+
+  # =========================================================================
+  # Calculated sensors
+  # =========================================================================
+  - sensor:
+      - name: "HP DeltaT"
+        unit_of_measurement: "°C"
+        state: >
+          {{ (states('sensor.hp_outlet_water_temperature_tb')|float(0)
+              - states('sensor.hp_inlet_water_temperature_ta')|float(0)) | round(1) }}
+
+      - name: "HP Thermal power"
+        unit_of_measurement: "kW"
+        device_class: power
+        state: >
+          {% set flow = states('sensor.hp_water_flow')|float(0) %}
+          {% set dt = states('sensor.hp_deltat')|float(0) %}
+          {{ (1.163 * flow * dt) | round(2) }}
+
+      # ---------- Estimated electrical power (apparent V × A) ----------
+      - name: "HP Electrical power"
+        unit_of_measurement: "W"
+        device_class: power
+        state: >
+          {% set v = states('sensor.hp_ac_voltage')|float(0) %}
+          {% set a = states('sensor.hp_ac_current')|float(0) %}
+          {{ (v * a) | round(0) }}
+
+      - name: "HP Electrical power kW"
+        unit_of_measurement: "kW"
+        device_class: power
+        state: >
+          {% set v = states('sensor.hp_ac_voltage')|float(0) %}
+          {% set a = states('sensor.hp_ac_current')|float(0) %}
+          {{ ((v * a) / 1000) | round(2) }}
+
+      # ---------- Live COP ----------
+      - name: "HP COP"
+        state: >
+          {% set q_kw = states('sensor.hp_thermal_power')|float(0) %}
+          {% set p_kw = states('sensor.hp_electrical_power_kw')|float(0) %}
+          {% if p_kw > 0.05 and q_kw > 0 %}
+            {{ (q_kw / p_kw) | round(2) }}
+          {% else %}
+            unavailable
+          {% endif %}
+
+      # ---------- Pressure delta (compression ratio indicator) ----------
+      - name: "HP Pressure delta"
+        unit_of_measurement: "kPa"
+        state: >
+          {{ (states('sensor.hp_high_pressure')|float(0)
+              - states('sensor.hp_low_pressure')|float(0)) | round(0) }}
+
+      # ---------- Outlet vs ambient delta ----------
+      - name: "HP Outlet-ambient delta"
+        unit_of_measurement: "°C"
+        state: >
+          {{ (states('sensor.hp_outlet_water_temperature_tb')|float(0)
+              - states('sensor.hp_ambient_temperature_t4')|float(0)) | round(1) }}
+
+      # ---------- HVAC mode text ----------
+      - name: "HP HVAC mode text"
+        state: >
+          {% set m = states('sensor.hp_hvac_mode_current')|int(0) %}
+          {% if m == 1 %}Cooling
+          {% elif m == 2 %}Heating
+          {% elif m == 4 %}Auto
+          {% else %}Unknown ({{ m }}){% endif %}
+
+      # ---------- Zone control text ----------
+      - name: "HP Zone control text"
+        state: >
+          {% set z = states('sensor.hp_zone_control_current')|int(0) %}
+          {% if z == 0 %}All off
+          {% elif z == 1 %}Zone 1 on
+          {% elif z == 2 %}Zone 2 on
+          {% elif z == 3 %}All on
+          {% else %}Unknown{% endif %}
+
+  # =========================================================================
+  # SELECT entities (preserves other bits in register 2103)
+  # =========================================================================
+  - select:
+      - name: "Heat pump silent mode"
+        unique_id: hp_silent_mode
+        icon: mdi:volume-off
+
+        state: >
+          {% set v = states('sensor.hp_function_a_raw')|int(0) %}
+          {% set level = (v // 16) % 4 %}
+          {% if level == 1 %}
+            Level 1
+          {% elif level == 2 %}
+            Level 2
+          {% else %}
+            Off
+          {% endif %}
+
+        options: "{{ ['Off', 'Level 1', 'Level 2'] }}"
+
+        select_option:
+          - service: modbus.write_register
+            data:
+              hub: adlar_hp
+              slave: 1
+              address: 2103
+              value: >-
+                {% set current = states('sensor.hp_function_a_raw')|int(0) %}
+                {% set cleared = current - ((current // 16) % 4) * 16 %}
+                {% if option == 'Level 1' %}
+                  {{ cleared + 16 }}
+                {% elif option == 'Level 2' %}
+                  {{ cleared + 32 }}
+                {% else %}
+                  {{ cleared }}
+                {% endif %}
+
+      - name: "Heat pump HVAC mode"
+        unique_id: hp_hvac_mode
+        icon: mdi:hvac
+
+        state: "{{ states('sensor.hp_hvac_mode_text') }}"
+
+        options: "{{ ['Heating', 'Cooling', 'Auto'] }}"
+
+        select_option:
+          - service: modbus.write_register
+            data:
+              hub: adlar_hp
+              slave: 1
+              address: 2100
+              value: >-
+                {% if option == 'Cooling' %}1
+                {% elif option == 'Heating' %}2
+                {% elif option == 'Auto' %}4
+                {% else %}2{% endif %}
+
+      - name: "Heat pump zone control"
+        unique_id: hp_zone_control
+        icon: mdi:home-thermometer
+
+        state: "{{ states('sensor.hp_zone_control_text') }}"
+
+        options: "{{ ['All off', 'Zone 1 on', 'Zone 2 on', 'All on'] }}"
+
+        select_option:
+          - service: modbus.write_register
+            data:
+              hub: adlar_hp
+              slave: 1
+              address: 2101
+              value: >-
+                {% if option == 'All off' %}0
+                {% elif option == 'Zone 1 on' %}1
+                {% elif option == 'Zone 2 on' %}2
+                {% elif option == 'All on' %}3
+                {% else %}1{% endif %}
+
+# =============================================================================
+# COUNTERS & UTILITY METERS
+# =============================================================================
+counter:
+  hp_starts:
+    name: "HP Starts"
+    initial: 0
+    step: 1
+
+  hp_defrost_cycles:
+    name: "HP Defrost cycles"
+    initial: 0
+    step: 1
+
+utility_meter:
+  hp_starts_per_hour:
+    source: counter.hp_starts
+    cycle: hourly
+
+  hp_defrost_per_day:
+    source: counter.hp_defrost_cycles
+    cycle: daily
+
+# =============================================================================
+# INPUT HELPERS - for writable controls
+# =============================================================================
+input_number:
+  hp_setpoint_target:
+    name: "HP Setpoint target (zone 1)"
+    min: 18
+    max: 50
+    step: 1
+    unit_of_measurement: "°C"
+    icon: mdi:thermometer-lines
+
+  hp_dhw_setpoint_target:
+    name: "HP DHW setpoint target"
+    min: 30
+    max: 60
+    step: 1
+    unit_of_measurement: "°C"
+    icon: mdi:water-thermometer
+
+  hp_room_temp_target:
+    name: "HP Room temperature target"
+    min: 16
+    max: 28
+    step: 0.5
+    unit_of_measurement: "°C"
+    icon: mdi:home-thermometer
+
+input_boolean:
+  hp_dhw_enabled:
+    name: "HP DHW (hot water) enabled"
+    icon: mdi:water-boiler
+
+  hp_forced_electric_heater:
+    name: "HP Forced electrical heater"
+    icon: mdi:radiator
+
+# =============================================================================
+# AUTOMATIONS - Modbus write actions
+# =============================================================================
+automation:
+  - alias: "HP Write zone 1 setpoint"
+    trigger:
+      - platform: state
+        entity_id: input_number.hp_setpoint_target
+    action:
+      - service: modbus.write_register
+        data:
+          hub: adlar_hp
+          slave: 1
+          address: 2107
+          value: "{{ (states('input_number.hp_setpoint_target')|float * 10) | int }}"
+
+  - alias: "HP Write DHW setpoint"
+    trigger:
+      - platform: state
+        entity_id: input_number.hp_dhw_setpoint_target
+    action:
+      - service: modbus.write_register
+        data:
+          hub: adlar_hp
+          slave: 1
+          address: 2105
+          value: "{{ (states('input_number.hp_dhw_setpoint_target')|float * 10) | int }}"
+
+  # NOTE: Register 2114 may not be functional in all configurations.
+  # Test carefully — if your unit is configured "without thermostat"
+  # mode, this register may be ignored.
+  - alias: "HP Write room temperature setpoint"
+    trigger:
+      - platform: state
+        entity_id: input_number.hp_room_temp_target
+    action:
+      - service: modbus.write_register
+        data:
+          hub: adlar_hp
+          slave: 1
+          address: 2114
+          value: "{{ (states('input_number.hp_room_temp_target')|float * 10) | int }}"
+
+  - alias: "HP Write DHW enabled"
+    trigger:
+      - platform: state
+        entity_id: input_boolean.hp_dhw_enabled
+    action:
+      - service: modbus.write_register
+        data:
+          hub: adlar_hp
+          slave: 1
+          address: 2102
+          value: "{{ 1 if is_state('input_boolean.hp_dhw_enabled', 'on') else 0 }}"
+
+  # Forced electric heater is bit 3 of register 2103
+  # Preserves silent mode (bits 4-5) and disinfection (bit 6) bits
+  - alias: "HP Write forced electric heater"
+    trigger:
+      - platform: state
+        entity_id: input_boolean.hp_forced_electric_heater
+    action:
+      - service: modbus.write_register
+        data:
+          hub: adlar_hp
+          slave: 1
+          address: 2103
+          value: >-
+            {% set current = states('sensor.hp_function_a_raw')|int(0) %}
+            {% set cleared = current - (8 if bitwise_and(current, 8) > 0 else 0) %}
+            {% if is_state('input_boolean.hp_forced_electric_heater', 'on') %}
+              {{ cleared + 8 }}
+            {% else %}
+              {{ cleared }}
+            {% endif %}
+
+  - alias: "HP Increment start counter"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.hp_compressor_running
+        from: "off"
+        to: "on"
+    action:
+      - service: counter.increment
+        target:
+          entity_id: counter.hp_starts
+
+  - alias: "HP Increment defrost counter"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.hp_defrost_active
+        from: "off"
+        to: "on"
+    action:
+      - service: counter.increment
+        target:
+          entity_id: counter.hp_defrost_cycles
+
+  - alias: "HP Water pressure too high warning"
+    trigger:
+      - platform: numeric_state
+        entity_id: sensor.hp_outlet_water_pressure
+        above: 3.0
+        for: "00:01:00"
+    action:
+      - service: persistent_notification.create
+        data:
+          title: "Heat pump water pressure too high"
+          message: >
+            Pressure is {{ states('sensor.hp_outlet_water_pressure') }} bar.
+            The pressure relief valve typically opens at 3.0 bar.
+
+  - alias: "HP E-error notification"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.hp_e_error_active
+        from: "off"
+        to: "on"
+    action:
+      - service: persistent_notification.create
+        data:
+          title: "Heat pump error (E)"
+          message: >
+            Error register E01-E16: {{ states('sensor.hp_error_e01_e16') }},
+            E17-E32: {{ states('sensor.hp_error_e17_e32') }}.
+            Check the Adlar display for details.
+
+  - alias: "HP P-error notification"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.hp_p_error_active
+        from: "off"
+        to: "on"
+    action:
+      - service: persistent_notification.create
+        data:
+          title: "Heat pump protection (P)"
+          message: >
+            Protection register P01-P16: {{ states('sensor.hp_error_p01_p16') }},
+            P17-P32: {{ states('sensor.hp_error_p17_p32') }}.
+            Check the Adlar display for details.
+
+# =============================================================================
+# HISTORY STATS
+# =============================================================================
+sensor:
+  - platform: history_stats
+    name: "HP Runtime last 24h"
+    entity_id: binary_sensor.hp_compressor_running
+    state: "on"
+    type: time
+    end: "{{ now() }}"
+    duration:
+      hours: 24
+
+  - platform: history_stats
+    name: "HP Defrost time last 24h"
+    entity_id: binary_sensor.hp_defrost_active
+    state: "on"
+    type: time
+    end: "{{ now() }}"
+    duration:
+      hours: 24
+
+  - platform: history_stats
+    name: "HP DHW time last 24h"
+    entity_id: binary_sensor.hp_dhw_mode_effective
+    state: "on"
+    type: time
+    end: "{{ now() }}"
+    duration:
+      hours: 24
