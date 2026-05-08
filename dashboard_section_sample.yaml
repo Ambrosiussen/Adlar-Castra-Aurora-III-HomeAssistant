@@ -1,0 +1,259 @@
+icon: mdi:heat-pump
+path: heatpump
+cards:
+  - type: heading
+    heading: Heat Pump
+  - type: glance
+    title: Live status
+    columns: 4
+    entities:
+      - entity: sensor.hp_ambient_temperature_t4
+        name: Ambient
+      - entity: sensor.hp_outlet_water_temperature_tb
+        name: Outlet
+      - entity: sensor.hp_inlet_water_temperature_ta
+        name: Inlet
+      - entity: sensor.hp_deltat
+        name: ΔT
+      - entity: sensor.hp_thermal_power
+        name: kW therm
+      - entity: sensor.hp_electrical_power_kw
+        name: kW elec
+      - entity: sensor.hp_cop
+        name: COP
+      - entity: sensor.hp_compressor_actual_frequency
+        name: Comp Hz
+  - type: horizontal-stack
+    cards:
+      - type: gauge
+        entity: sensor.hp_thermal_power
+        name: Thermal power
+        unit: kW
+        min: 0
+        max: 12
+        severity:
+          green: 0
+          yellow: 8
+          red: 11
+      - type: gauge
+        entity: sensor.hp_electrical_power_kw
+        name: Electrical power
+        unit: kW
+        min: 0
+        max: 4
+        severity:
+          green: 0
+          yellow: 2.5
+          red: 3.5
+      - type: gauge
+        entity: sensor.hp_outlet_water_pressure
+        name: Water pressure
+        unit: bar
+        min: 0
+        max: 3.5
+        needle: true
+        severity:
+          green: 1.2
+          yellow: 2.3
+          red: 2.8
+  - type: entities
+    title: Setpoint control
+    state_color: true
+    entities:
+      - entity: input_number.hp_setpoint_target
+        name: HA target setpoint
+        icon: mdi:thermometer-chevron-up
+      - entity: sensor.hp_zone1_heating_setpoint_current
+        name: Active setpoint on HP
+        icon: mdi:thermometer
+      - entity: sensor.hp_zone1_climate_curve_heating_set
+        name: Climate curve setpoint (Jan)
+        icon: mdi:chart-line
+  - type: entities
+    title: Mode control
+    state_color: true
+    entities:
+      - entity: select.heat_pump_hvac_mode
+        name: HVAC mode
+        icon: mdi:hvac
+      - entity: select.heat_pump_zone_control
+        name: Zone control
+        icon: mdi:home-thermometer
+      - entity: select.heat_pump_silent_mode
+        name: Silent mode
+        icon: mdi:volume-off
+      - entity: input_boolean.hp_dhw_enabled
+        name: DHW enabled
+        icon: mdi:water-boiler
+      - entity: input_boolean.hp_forced_electric_heater
+        name: Forced electric heater
+        icon: mdi:radiator
+  - type: entities
+    title: DHW & Room temp
+    state_color: true
+    entities:
+      - entity: input_number.hp_dhw_setpoint_target
+        name: DHW target
+      - entity: sensor.hp_dhw_setpoint_current
+        name: DHW current
+      - entity: sensor.hp_dhw_tank_temperature_tw
+        name: DHW tank temp
+      - type: divider
+      - entity: input_number.hp_room_temp_target
+        name: Room temp target (test!)
+      - entity: sensor.hp_room_temperature_tidr
+        name: Room temp actual
+      - entity: sensor.hp_room_temperature_setpoint_current
+        name: Room temp setpoint on HP
+  - type: glance
+    title: Status indicators
+    columns: 4
+    entities:
+      - entity: binary_sensor.hp_compressor_running
+        name: Compressor
+      - entity: binary_sensor.hp_main_water_pump_on
+        name: Water pump
+      - entity: binary_sensor.hp_defrost_active
+        name: Defrost
+      - entity: binary_sensor.hp_anti_freezing_active
+        name: Anti-freeze
+      - entity: binary_sensor.hp_oil_return_active
+        name: Oil return
+      - entity: binary_sensor.hp_disinfection_active
+        name: Disinfection
+      - entity: binary_sensor.hp_cooling_cycle_4_way_valve
+        name: Cooling cycle
+      - entity: binary_sensor.hp_ambient_temp_too_low_compressor_blocked
+        name: Too cold
+  - type: glance
+    title: Effective modes
+    columns: 3
+    entities:
+      - entity: binary_sensor.hp_heating_mode_effective
+        name: Heating
+      - entity: binary_sensor.hp_cooling_mode_effective
+        name: Cooling
+      - entity: binary_sensor.hp_dhw_mode_effective
+        name: DHW
+  - type: glance
+    title: Errors
+    columns: 2
+    entities:
+      - entity: binary_sensor.hp_e_error_active
+        name: E-error active
+      - entity: binary_sensor.hp_p_error_active
+        name: P-error active
+  - type: glance
+    title: Refrigerant circuit
+    columns: 4
+    entities:
+      - entity: sensor.hp_discharge_temperature_tp
+        name: Discharge
+      - entity: sensor.hp_suction_temperature_th
+        name: Suction
+      - entity: sensor.hp_outdoor_unit_coil_t3
+        name: Coil T3
+      - entity: sensor.hp_exv_outlet_t5
+        name: EXV outlet
+      - entity: sensor.hp_high_pressure
+        name: High pressure
+      - entity: sensor.hp_low_pressure
+        name: Low pressure
+      - entity: sensor.hp_pressure_delta
+        name: Pressure ΔP
+      - entity: sensor.hp_eev_opening
+        name: EEV steps
+  - type: glance
+    title: Hydraulics
+    columns: 4
+    entities:
+      - entity: sensor.hp_water_flow
+        name: Flow
+      - entity: sensor.hp_pump_pwm_output
+        name: PWM out
+      - entity: sensor.hp_pump_pwm_feedback
+        name: PWM fb
+      - entity: sensor.hp_inlet_water_pressure
+        name: Inlet press
+  - type: glance
+    title: Compressor & electrical
+    columns: 4
+    entities:
+      - entity: sensor.hp_compressor_target_frequency
+        name: Target Hz
+      - entity: sensor.hp_compressor_actual_frequency
+        name: Actual Hz
+      - entity: sensor.hp_compressor_current
+        name: Comp A
+      - entity: sensor.hp_fan_speed
+        name: Fan RPM
+      - entity: sensor.hp_ac_voltage
+        name: AC V
+      - entity: sensor.hp_ac_current
+        name: AC A
+      - entity: sensor.hp_dc_bus_voltage
+        name: DC bus V
+      - entity: sensor.hp_electrical_power
+        name: P (W)
+  - type: history-graph
+    title: Water temperatures (24h)
+    hours_to_show: 24
+    refresh_interval: 30
+    entities:
+      - entity: sensor.hp_ambient_temperature_t4
+        name: Ambient
+      - entity: sensor.hp_outlet_water_temperature_tb
+        name: Outlet
+      - entity: sensor.hp_inlet_water_temperature_ta
+        name: Inlet
+      - entity: sensor.hp_zone1_heating_setpoint_current
+        name: Setpoint
+      - entity: sensor.hp_room_temperature_tidr
+        name: Room
+  - type: history-graph
+    title: Power & flow (24h)
+    hours_to_show: 24
+    refresh_interval: 30
+    entities:
+      - entity: sensor.hp_thermal_power
+        name: Thermal kW
+      - entity: sensor.hp_electrical_power_kw
+        name: Electrical kW
+      - entity: sensor.hp_compressor_actual_frequency
+        name: Compressor Hz
+      - entity: sensor.hp_water_flow
+        name: Flow
+  - type: history-graph
+    title: COP (24h)
+    hours_to_show: 24
+    entities:
+      - entity: sensor.hp_cop
+        name: COP
+  - type: history-graph
+    title: Refrigerant pressures (24h)
+    hours_to_show: 24
+    entities:
+      - entity: sensor.hp_high_pressure
+        name: High pressure
+      - entity: sensor.hp_low_pressure
+        name: Low pressure
+  - type: history-graph
+    title: Water pressure (24h)
+    hours_to_show: 24
+    entities:
+      - entity: sensor.hp_outlet_water_pressure
+        name: Pressure
+  - type: entities
+    title: Statistics
+    entities:
+      - entity: counter.hp_starts
+        name: Compressor starts (total)
+      - entity: counter.hp_defrost_cycles
+        name: Defrost cycles (total)
+      - entity: sensor.hp_runtime_last_24h
+        name: Runtime last 24h
+      - entity: sensor.hp_defrost_time_last_24h
+        name: Defrost time last 24h
+      - entity: sensor.hp_dhw_time_last_24h
+        name: DHW time last 24h
+column_span: 4

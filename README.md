@@ -125,6 +125,21 @@ In HA: **Developer Tools → YAML → Check Configuration**
 
 If green, restart Home Assistant. Within a minute you should see `sensor.hp_*` entities populated with live values.
 
+## Sample dashboard
+
+A ready-to-use Lovelace dashboard view is provided in [dashboard_section_sample.yaml](dashboard_section_sample.yaml). It groups all the integration's entities into logical cards: live status, gauges, setpoint controls, mode controls, DHW, status indicators, refrigerant circuit, hydraulics, compressor & electrical, and 24-hour history graphs.
+
+To use it: open your dashboard in **edit mode → raw configuration editor**, and paste the YAML as a new entry under the top-level `views:` list. Or save it to a `dashboards/` folder if you maintain dashboards as files.
+
+![Dashboard top: live status, gauges, setpoint and mode controls](images/dashboard_1.png)
+![Dashboard middle: status, refrigerant circuit, hydraulics, compressor, water temperature graph](images/dashboard_2.png)
+![Dashboard graphs: power & flow, COP, refrigerant pressures](images/dashboard_3.png)
+![Dashboard bottom: water pressure history and statistics](images/dashboard_4.png)
+
+> ℹ️ The COP graph above appears empty because this unit is affected by the AC voltage/current firmware issue (see [Important Caveats](#ac-voltage-and-current-registers-may-not-work--cop-unavailable-on-some-units)). On units where registers 74/75 work, the COP graph will populate.
+
+The dashboard relies on the `input_number` and `input_boolean` helpers defined in the package (target setpoint, DHW target, room temp target, DHW enabled, forced electric heater) — these are created automatically when the package is loaded.
+
 ## Important Caveats
 
 ### The "two captains" problem with the Jan-module

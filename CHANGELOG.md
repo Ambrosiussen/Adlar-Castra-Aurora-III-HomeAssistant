@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Notifications: water pressure too high, E-errors, P-errors
 - Comprehensive README with installation, troubleshooting, and caveats
 - Diagnostic Python script for verifying register behavior
+- Sample Lovelace dashboard (`dashboard_section_sample.yaml`) covering
+  all integration entities, with screenshots in the README
 
 ### Known issues
 
