@@ -131,6 +131,8 @@ A ready-to-use Lovelace dashboard view is provided in [dashboard_section_sample.
 
 To use it: open your dashboard in **edit mode → raw configuration editor**, and paste the YAML as a new entry under the top-level `views:` list. Or save it to a `dashboards/` folder if you maintain dashboards as files.
 
+> ⚠️ **HACS dependency:** the bidirectional thermal-power gauge at the top of the view uses [`gauge-card-pro`](https://github.com/benjamin-dcs/gauge-card-pro). Install it from HACS first (HACS → Frontend → Search "Gauge Card Pro") or that card will render as "Custom element doesn't exist: gauge-card-pro". The rest of the dashboard uses only built-in cards and works without HACS.
+
 ![Dashboard top: live status, gauges, setpoint and mode controls](images/dashboard_1.png)
 ![Dashboard middle: status, refrigerant circuit, hydraulics, compressor, water temperature graph](images/dashboard_2.png)
 ![Dashboard graphs: power & flow, COP, refrigerant pressures](images/dashboard_3.png)

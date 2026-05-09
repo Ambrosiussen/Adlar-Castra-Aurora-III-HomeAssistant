@@ -5,7 +5,7 @@
 # heat pump (R290 series) via Modbus TCP-to-RTU gateway.
 #
 # Hardware setup:
-#   - Adlar Castra Aurora III Pro (7 kW or 9 kW, R290 refrigerant)
+#   - Adlar Castra Aurora III Pro (7 kW, 9 kW, or 12 kW, R290 refrigerant)
 #   - Waveshare RS232/485 to WiFi/ETH (B) gateway, configured as
 #     Modbus TCP <=> Modbus RTU bridge
 #   - RS485 connected in parallel to the existing Jan-module on the

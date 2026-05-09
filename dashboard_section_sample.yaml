@@ -269,7 +269,7 @@ cards:
       rows: 6
       columns: 12
   - type: history-graph
-    title: Ther/Electrical
+    title: Thermal/Electrical
     hours_to_show: 24
     entities:
       - entity: sensor.hp_heating_power
