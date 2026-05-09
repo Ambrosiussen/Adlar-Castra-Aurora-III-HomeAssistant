@@ -3,6 +3,71 @@ path: heatpump
 cards:
   - type: heading
     heading: Heat Pump
+  - type: markdown
+    content: |
+      ## 🔧 {{ states('sensor.hp_status_text') }}
+    grid_options:
+      columns: 48
+      rows: auto
+  - type: custom:gauge-card-pro
+    entity: sensor.hp_thermal_power_signed
+    grid_options:
+      rows: 5
+      columns: 12
+    min: -12
+    max: 12
+    needle: true
+    gradient: true
+    gradientResolution: medium
+    titles:
+      primary: Thermal output
+      secondary: |
+        {% set v = states('sensor.hp_thermal_power_signed')|float(0) %}
+        {% if v > 0.3 %}🔥 +{{ v }} kW
+        {% elif v < -0.3 %}❄️ {{ v }} kW
+        {% else %}⏸ Idle{% endif %}
+    value_text: ""
+    segments:
+      - from: -12
+        color: "#0066cc"
+      - from: -8
+        color: "#3399ff"
+      - from: -3
+        color: "#cce6ff"
+      - from: 0
+        color: "#ffffff"
+      - from: 3
+        color: "#ffcccc"
+      - from: 8
+        color: "#ff3333"
+      - from: 12
+        color: "#cc0000"
+  - type: horizontal-stack
+    cards:
+      - type: gauge
+        entity: sensor.hp_outlet_water_pressure
+        name: Water pressure
+        unit: bar
+        min: 0
+        max: 3.5
+        needle: true
+        severity:
+          green: 1.2
+          yellow: 2.3
+          red: 2.8
+      - type: gauge
+        entity: sensor.hp_electrical_power_kw
+        name: Electrical power
+        unit: kW
+        min: 0
+        max: 4
+        severity:
+          green: 0
+          yellow: 2.5
+          red: 3.5
+    grid_options:
+      rows: 5
+      columns: 12
   - type: glance
     title: Live status
     columns: 4
@@ -23,52 +88,9 @@ cards:
         name: COP
       - entity: sensor.hp_compressor_actual_frequency
         name: Comp Hz
-  - type: horizontal-stack
-    cards:
-      - type: gauge
-        entity: sensor.hp_thermal_power
-        name: Thermal power
-        unit: kW
-        min: 0
-        max: 12
-        severity:
-          green: 0
-          yellow: 8
-          red: 11
-      - type: gauge
-        entity: sensor.hp_electrical_power_kw
-        name: Electrical power
-        unit: kW
-        min: 0
-        max: 4
-        severity:
-          green: 0
-          yellow: 2.5
-          red: 3.5
-      - type: gauge
-        entity: sensor.hp_outlet_water_pressure
-        name: Water pressure
-        unit: bar
-        min: 0
-        max: 3.5
-        needle: true
-        severity:
-          green: 1.2
-          yellow: 2.3
-          red: 2.8
-  - type: entities
-    title: Setpoint control
-    state_color: true
-    entities:
-      - entity: input_number.hp_setpoint_target
-        name: HA target setpoint
-        icon: mdi:thermometer-chevron-up
-      - entity: sensor.hp_zone1_heating_setpoint_current
-        name: Active setpoint on HP
-        icon: mdi:thermometer
-      - entity: sensor.hp_zone1_climate_curve_heating_set
-        name: Climate curve setpoint (Jan)
-        icon: mdi:chart-line
+    grid_options:
+      rows: 5
+      columns: 12
   - type: entities
     title: Mode control
     state_color: true
@@ -88,6 +110,19 @@ cards:
       - entity: input_boolean.hp_forced_electric_heater
         name: Forced electric heater
         icon: mdi:radiator
+  - type: entities
+    title: Setpoint control
+    state_color: true
+    entities:
+      - entity: input_number.hp_setpoint_target
+        name: HA target setpoint
+        icon: mdi:thermometer-chevron-up
+      - entity: sensor.hp_zone1_heating_setpoint_current
+        name: Active setpoint on HP
+        icon: mdi:thermometer
+      - entity: sensor.hp_zone1_climate_curve_heating_set
+        name: Climate curve setpoint (Jan)
+        icon: mdi:chart-line
   - type: entities
     title: DHW & Room temp
     state_color: true
@@ -187,14 +222,14 @@ cards:
         name: Comp A
       - entity: sensor.hp_fan_speed
         name: Fan RPM
-      - entity: sensor.hp_ac_voltage
-        name: AC V
-      - entity: sensor.hp_ac_current
-        name: AC A
       - entity: sensor.hp_dc_bus_voltage
         name: DC bus V
       - entity: sensor.hp_electrical_power
-        name: P (W)
+        name: P estimated W
+      - entity: sensor.hp_eev_opening
+        name: EEV steps
+      - entity: sensor.hp_pressure_delta
+        name: Pressure ΔP
   - type: history-graph
     title: Water temperatures (24h)
     hours_to_show: 24
@@ -210,25 +245,18 @@ cards:
         name: Setpoint
       - entity: sensor.hp_room_temperature_tidr
         name: Room
+    grid_options:
+      rows: 6
+      columns: 12
   - type: history-graph
-    title: Power & flow (24h)
-    hours_to_show: 24
-    refresh_interval: 30
-    entities:
-      - entity: sensor.hp_thermal_power
-        name: Thermal kW
-      - entity: sensor.hp_electrical_power_kw
-        name: Electrical kW
-      - entity: sensor.hp_compressor_actual_frequency
-        name: Compressor Hz
-      - entity: sensor.hp_water_flow
-        name: Flow
-  - type: history-graph
-    title: COP (24h)
+    title: Water pressure (24h)
     hours_to_show: 24
     entities:
-      - entity: sensor.hp_cop
-        name: COP
+      - entity: sensor.hp_outlet_water_pressure
+        name: Pressure
+    grid_options:
+      rows: 6
+      columns: 12
   - type: history-graph
     title: Refrigerant pressures (24h)
     hours_to_show: 24
@@ -237,19 +265,48 @@ cards:
         name: High pressure
       - entity: sensor.hp_low_pressure
         name: Low pressure
+    grid_options:
+      rows: 6
+      columns: 12
   - type: history-graph
-    title: Water pressure (24h)
+    title: Ther/Electrical
     hours_to_show: 24
     entities:
-      - entity: sensor.hp_outlet_water_pressure
-        name: Pressure
+      - entity: sensor.hp_heating_power
+        name: Heating
+      - entity: sensor.hp_cooling_power
+        name: Cooling
+      - entity: sensor.hp_electrical_power_kw
+        name: Electrical
+  - type: history-graph
+    title: Flow
+    hours_to_show: 24
+    entities:
+      - entity: sensor.hp_water_flow
+        name: Flow
+  - type: history-graph
+    title: Compressor
+    hours_to_show: 24
+    entities:
+      - entity: sensor.hp_compressor_actual_frequency
+        name: Compressor Hz
+  - type: history-graph
+    title: COP (24h)
+    hours_to_show: 24
+    entities:
+      - entity: sensor.hp_cop
+        name: COP
   - type: entities
     title: Statistics
     entities:
-      - entity: counter.hp_starts
+      - entity: sensor.hp_starts_counter
         name: Compressor starts (total)
-      - entity: counter.hp_defrost_cycles
+      - entity: sensor.hp_defrost_cycles_counter
         name: Defrost cycles (total)
+      - entity: sensor.hp_starts_per_hour
+        name: Starts last hour
+      - entity: sensor.hp_defrost_per_day
+        name: Defrosts today
       - entity: sensor.hp_runtime_last_24h
         name: Runtime last 24h
       - entity: sensor.hp_defrost_time_last_24h

@@ -5,7 +5,7 @@
 # heat pump (R290 series) via Modbus TCP-to-RTU gateway.
 #
 # Hardware setup:
-#   - Adlar Castra Aurora III Pro (7 kW, 9 kW, or 12 kW, R290 refrigerant)
+#   - Adlar Castra Aurora III Pro (7 kW or 9 kW, R290 refrigerant)
 #   - Waveshare RS232/485 to WiFi/ETH (B) gateway, configured as
 #     Modbus TCP <=> Modbus RTU bridge
 #   - RS485 connected in parallel to the existing Jan-module on the
@@ -58,13 +58,12 @@
 modbus:
   - name: adlar_hp
     type: tcp
-    host: 10.57.16.59  # Replace with your Waveshare's IP
+    host: 10.57.16.59 # Replace with your Waveshare's IP
     port: 8899
     timeout: 5
     delay: 2
 
     sensors:
-
       # =====================================================================
       # CONFIGURATION & SYSTEM INFO (static, slow polling)
       # =====================================================================
@@ -751,30 +750,74 @@ template:
           {{ (states('sensor.hp_outlet_water_temperature_tb')|float(0)
               - states('sensor.hp_inlet_water_temperature_ta')|float(0)) | round(1) }}
 
+      # ---------- Heating power (heating cycle only) ----------
+      - name: "HP Heating power"
+        unit_of_measurement: "kW"
+        device_class: power
+        state: >
+          {% set freq = states('sensor.hp_compressor_actual_frequency')|float(0) %}
+          {% set flow = states('sensor.hp_water_flow')|float(0) %}
+          {% set dt = states('sensor.hp_deltat')|float(0) %}
+          {% set cooling = is_state('binary_sensor.hp_cooling_cycle_4_way_valve', 'on') %}
+          {% set defrost = is_state('binary_sensor.hp_defrost_active', 'on') %}
+          {% if freq > 0 and flow > 0.3 and dt > 0.5 and not cooling and not defrost %}
+            {{ (1.163 * flow * dt) | round(2) }}
+          {% else %}
+            0
+          {% endif %}
+
+      # ---------- Cooling power (cooling cycle only) ----------
+      - name: "HP Cooling power"
+        unit_of_measurement: "kW"
+        device_class: power
+        state: >
+          {% set freq = states('sensor.hp_compressor_actual_frequency')|float(0) %}
+          {% set flow = states('sensor.hp_water_flow')|float(0) %}
+          {% set dt = states('sensor.hp_deltat')|float(0) %}
+          {% set cooling = is_state('binary_sensor.hp_cooling_cycle_4_way_valve', 'on') %}
+          {% set defrost = is_state('binary_sensor.hp_defrost_active', 'on') %}
+          {% if freq > 0 and flow > 0.3 and dt < -0.5 and cooling and not defrost %}
+            {{ (-1.163 * flow * dt) | round(2) }}
+          {% else %}
+            0
+          {% endif %}
+
+      # ---------- Total thermal power (absolute value, for backward compat) ----------
       - name: "HP Thermal power"
         unit_of_measurement: "kW"
         device_class: power
         state: >
-          {% set flow = states('sensor.hp_water_flow')|float(0) %}
-          {% set dt = states('sensor.hp_deltat')|float(0) %}
-          {{ (1.163 * flow * dt) | round(2) }}
+          {% set heating = states('sensor.hp_heating_power')|float(0) %}
+          {% set cooling = states('sensor.hp_cooling_power')|float(0) %}
+          {{ (heating + cooling) | round(2) }}
 
-      # ---------- Estimated electrical power (apparent V × A) ----------
+      # ---------- Estimated electrical power (frequency-based) ----------
+      # NOTE: This is a rough estimate based on compressor frequency only.
+      # AC voltage/current registers (74/75) return 0 on this firmware.
+      # DC bus × compressor current gives apparent inverter power, not AC input.
+      # For accurate measurement, install a Shelly EM or kWh meter on the HP
+      # circuit and replace these sensors with that source.
       - name: "HP Electrical power"
         unit_of_measurement: "W"
         device_class: power
         state: >
-          {% set v = states('sensor.hp_ac_voltage')|float(0) %}
-          {% set a = states('sensor.hp_ac_current')|float(0) %}
-          {{ (v * a) | round(0) }}
+          {% set freq = states('sensor.hp_compressor_actual_frequency')|float(0) %}
+          {% if freq > 0 %}
+            {{ ((freq * 50) + 80) | round(0) }}
+          {% else %}
+            8
+          {% endif %}
 
       - name: "HP Electrical power kW"
         unit_of_measurement: "kW"
         device_class: power
         state: >
-          {% set v = states('sensor.hp_ac_voltage')|float(0) %}
-          {% set a = states('sensor.hp_ac_current')|float(0) %}
-          {{ ((v * a) / 1000) | round(2) }}
+          {% set freq = states('sensor.hp_compressor_actual_frequency')|float(0) %}
+          {% if freq > 0 %}
+            {{ (((freq * 50) + 80) / 1000) | round(2) }}
+          {% else %}
+            0.008
+          {% endif %}
 
       # ---------- Live COP ----------
       - name: "HP COP"
@@ -819,6 +862,67 @@ template:
           {% elif z == 2 %}Zone 2 on
           {% elif z == 3 %}All on
           {% else %}Unknown{% endif %}
+
+      # ---------- Counter wrappers (give utility_meter a unit) ----------
+      - name: "HP Starts counter"
+        unique_id: hp_starts_counter
+        unit_of_measurement: "starts"
+        state_class: total_increasing
+        state: "{{ states('counter.hp_starts') | int(0) }}"
+
+      - name: "HP Defrost cycles counter"
+        unique_id: hp_defrost_cycles_counter
+        unit_of_measurement: "cycles"
+        state_class: total_increasing
+        state: "{{ states('counter.hp_defrost_cycles') | int(0) }}"
+
+      # ---------- Signed thermal power for bidirectional gauge ----------
+      # Positive = heating mode, negative = cooling mode
+      - name: "HP Thermal power signed"
+        unit_of_measurement: "kW"
+        device_class: power
+        state: >
+          {% set heating = states('sensor.hp_heating_power')|float(0) %}
+          {% set cooling = states('sensor.hp_cooling_power')|float(0) %}
+          {{ (heating - cooling) | round(2) }}
+
+      # ---------- Human-readable status text ----------
+      - name: "HP Status text"
+        icon: mdi:heat-pump
+        state: >
+          {% set freq = states('sensor.hp_compressor_actual_frequency')|float(0) %}
+          {% set flow = states('sensor.hp_water_flow')|float(0) %}
+          {% set dt = states('sensor.hp_deltat')|float(0) %}
+          {% set defrost = is_state('binary_sensor.hp_defrost_active', 'on') %}
+          {% set valve = is_state('binary_sensor.hp_cooling_cycle_4_way_valve', 'on') %}
+          {% set pump = is_state('binary_sensor.hp_main_water_pump_on', 'on') %}
+          {% set anti_freeze = is_state('binary_sensor.hp_anti_freezing_active', 'on') %}
+          {% set oil = is_state('binary_sensor.hp_oil_return_active', 'on') %}
+          {% set dhw = is_state('binary_sensor.hp_dhw_mode_effective', 'on') %}
+          {% set heating_power = states('sensor.hp_heating_power')|float(0) %}
+          {% set cooling_power = states('sensor.hp_cooling_power')|float(0) %}
+
+          {% if defrost %}
+            Defrosting (taking heat from floor to melt outdoor coil)
+          {% elif oil %}
+            Oil return cycle (compressor lubrication)
+          {% elif anti_freeze %}
+            Anti-freeze protection active
+          {% elif dhw %}
+            Heating domestic hot water
+          {% elif freq > 0 and valve and cooling_power > 0.3 %}
+            Cooling at {{ cooling_power }} kW ({{ freq|int }} Hz)
+          {% elif freq > 0 and not valve and heating_power > 0.3 %}
+            Heating at {{ heating_power }} kW ({{ freq|int }} Hz)
+          {% elif freq > 0 and not valve and heating_power < 0.3 %}
+            Starting up heating ({{ freq|int }} Hz)
+          {% elif freq == 0 and pump and flow > 0.3 %}
+            Idle with pump circulation (post-cycle)
+          {% elif freq == 0 and not pump %}
+            Idle (compressor and pump off)
+          {% else %}
+            Unknown state
+          {% endif %}
 
   # =========================================================================
   # SELECT entities (preserves other bits in register 2103)
@@ -898,24 +1002,6 @@ template:
                 {% elif option == 'Zone 2 on' %}2
                 {% elif option == 'All on' %}3
                 {% else %}1{% endif %}
-
-  # =========================================================================
-  # Counter wrappers — expose counters as sensors with a unit and
-  # state_class so utility_meter accepts them without warning.
-  # The counter integration itself does not accept unit_of_measurement.
-  # =========================================================================
-  - sensor:
-      - name: "HP Starts counter"
-        unique_id: hp_starts_counter
-        unit_of_measurement: "starts"
-        state_class: total_increasing
-        state: "{{ states('counter.hp_starts') | int(0) }}"
-
-      - name: "HP Defrost cycles counter"
-        unique_id: hp_defrost_cycles_counter
-        unit_of_measurement: "cycles"
-        state_class: total_increasing
-        state: "{{ states('counter.hp_defrost_cycles') | int(0) }}"
 
 # =============================================================================
 # COUNTERS & UTILITY METERS
