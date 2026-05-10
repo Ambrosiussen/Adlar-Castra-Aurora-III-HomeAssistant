@@ -750,7 +750,7 @@ template:
           {{ (states('sensor.hp_outlet_water_temperature_tb')|float(0)
               - states('sensor.hp_inlet_water_temperature_ta')|float(0)) | round(1) }}
 
-      # ---------- Heating power (heating cycle only) ----------
+      # ---------- Heating power (deltaT-based, no valve dependency) ----------
       - name: "HP Heating power"
         unit_of_measurement: "kW"
         device_class: power
@@ -758,15 +758,13 @@ template:
           {% set freq = states('sensor.hp_compressor_actual_frequency')|float(0) %}
           {% set flow = states('sensor.hp_water_flow')|float(0) %}
           {% set dt = states('sensor.hp_deltat')|float(0) %}
-          {% set cooling = is_state('binary_sensor.hp_cooling_cycle_4_way_valve', 'on') %}
           {% set defrost = is_state('binary_sensor.hp_defrost_active', 'on') %}
-          {% if freq > 0 and flow > 0.3 and dt > 0.5 and not cooling and not defrost %}
+          {% if freq > 0 and flow > 0.3 and dt > 0.5 and not defrost %}
             {{ (1.163 * flow * dt) | round(2) }}
           {% else %}
             0
           {% endif %}
 
-      # ---------- Cooling power (cooling cycle only) ----------
       - name: "HP Cooling power"
         unit_of_measurement: "kW"
         device_class: power
@@ -774,9 +772,8 @@ template:
           {% set freq = states('sensor.hp_compressor_actual_frequency')|float(0) %}
           {% set flow = states('sensor.hp_water_flow')|float(0) %}
           {% set dt = states('sensor.hp_deltat')|float(0) %}
-          {% set cooling = is_state('binary_sensor.hp_cooling_cycle_4_way_valve', 'on') %}
           {% set defrost = is_state('binary_sensor.hp_defrost_active', 'on') %}
-          {% if freq > 0 and flow > 0.3 and dt < -0.5 and cooling and not defrost %}
+          {% if freq > 0 and flow > 0.3 and dt < -0.5 and not defrost %}
             {{ (-1.163 * flow * dt) | round(2) }}
           {% else %}
             0
@@ -910,10 +907,10 @@ template:
             Anti-freeze protection active
           {% elif dhw %}
             Heating domestic hot water
-          {% elif freq > 0 and valve and cooling_power > 0.3 %}
-            Cooling at {{ cooling_power }} kW ({{ freq|int }} Hz)
-          {% elif freq > 0 and not valve and heating_power > 0.3 %}
-            Heating at {{ heating_power }} kW ({{ freq|int }} Hz)
+          {% elif freq > 0 and dt > 0.5 and flow > 0.3 %}
+            Heating ({{ (1.163 * flow * dt) | round(1) }} kW thermal, {{ freq|int }} Hz)
+          {% elif freq > 0 and dt < -0.5 and flow > 0.3 %}
+            Cooling ({{ (-1.163 * flow * dt) | round(1) }} kW thermal, {{ freq|int }} Hz)
           {% elif freq > 0 and not valve and heating_power < 0.3 %}
             Starting up heating ({{ freq|int }} Hz)
           {% elif freq == 0 and pump and flow > 0.3 %}
