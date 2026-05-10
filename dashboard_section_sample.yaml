@@ -290,12 +290,23 @@ cards:
     entities:
       - entity: sensor.hp_compressor_actual_frequency
         name: Compressor Hz
-  - type: history-graph
-    title: COP (24h)
-    hours_to_show: 24
-    entities:
+  - type: custom:apexcharts-card
+    header:
+      show: true
+      title: COP (24h)
+    graph_span: 24h
+    yaxis:
+      - min: 0
+        max: 10
+        decimals: 1
+    series:
       - entity: sensor.hp_cop
         name: COP
+        stroke_width: 2
+        type: line
+        group_by:
+          func: avg
+          duration: 5min
   - type: entities
     title: Statistics
     entities:
